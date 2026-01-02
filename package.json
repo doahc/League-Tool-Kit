@@ -1,0 +1,102 @@
+{
+  "name": "league-toolkit",
+  "version": "3.0.0",
+  "description": "League of Legends automation toolkit with advanced champ select features",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "SET NODE_ENV=development && electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "publish": "electron-builder --win --publish always"
+  },
+  "keywords": [
+    "league",
+    "legends",
+    "lol",
+    "automation",
+    "champ-select",
+    "lcu",
+    "electron"
+  ],
+  "author": "LTK Team",
+  "license": "MIT",
+  "dependencies": {
+    "electron-updater": "^6.1.7"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.ltk.league-toolkit",
+    "productName": "LTK",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "styles.css",
+      "app.js",
+      "services/**/*",
+      "utils/**/*",
+      "assets/**/*"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "Astralis-Bot",
+      "repo": "League-Tool-Kit"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator",
+      "publisherName": "LTK Team",
+      "sign": null,
+      "signingHashAlgorithms": []
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "LTK",
+      "perMachine": false
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Utility"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Astralis-Bot/League-Tool-Kit"
+  },
+  "bugs": {
+    "url": "https://github.com/Astralis-Bot/League-Tool-Kit/issues"
+  },
+  "homepage": "https://github.com/Astralis-Bot/League-Tool-Kit#readme"
+}

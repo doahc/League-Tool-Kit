@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://127.0.0.1:* https://fonts.googleapis.com https://fonts.gstatic.com;">
+    <title>LTK - League Toolkit</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Titlebar -->
+        <div class="titlebar">
+            <div class="titlebar-drag">
+                <span class="titlebar-title">LTK</span>
+            </div>
+            <div class="titlebar-controls">
+                <button class="titlebar-button" onclick="window.api.windowMinimize()">
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                        <path fill="currentColor" d="M0,5 L10,5" stroke="currentColor" stroke-width="1"/>
+                    </svg>
+                </button>
+                <button class="titlebar-button" onclick="window.api.windowMaximize()">
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                        <rect width="9" height="9" x="0.5" y="0.5" fill="none" stroke="currentColor"/>
+                    </svg>
+                </button>
+                <button class="titlebar-button close" onclick="window.api.windowClose()">
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                        <path fill="currentColor" d="M0,0 L10,10 M10,0 L0,10" stroke="currentColor" stroke-width="1"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="logo">
+                <div class="logo-text">LTK</div>
+                <div class="logo-subtitle">League Toolkit</div>
+            </div>
+            
+            <nav class="nav-menu">
+                <div class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
+                    <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/>
+                    </svg>
+                    Dashboard
+                </div>
+                <div class="nav-item" data-view="settings" onclick="switchView('settings')">
+                    <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+                    </svg>
+                    Settings
+                </div>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <div class="status-bar">
+                    <div class="status-indicator" id="statusIndicator">
+                        <div class="status-dot" id="statusDot"></div>
+                        <span class="status-text" id="statusText">Checking...</span>
+                    </div>
+                    
+                    <button class="btn-reconnect" id="reconnectBtn" onclick="reconnectLCU()">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                        </svg>
+                        <span id="reconnectText">Reconnect</span>
+                    </button>
+                    
+                    <div class="user-info" id="userInfo">
+                        <div class="info-item">
+                            <span class="info-label">Summoner</span>
+                            <span class="info-value" id="summonerName">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Region</span>
+                            <span class="info-value" id="region">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Level</span>
+                            <span class="info-value" id="level">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Rank</span>
+                            <span class="info-value" id="rank">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="content-area">
+                <!-- Dashboard View -->
+                <div id="view-dashboard" class="view-content active">
+                    <!-- Connection Warning (Hidden by default) -->
+                    <div class="connection-warning" id="connectionWarning" style="display: none;">
+                        <svg class="warning-icon" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                        <div class="warning-content">
+                            <div class="warning-title">League Client Not Connected</div>
+                            <div class="warning-message">Please start the League of Legends client to use automation features.</div>
+                        </div>
+                    </div>
+
+                    <!-- Champ Select Automation -->
+                    <div class="section-title">Champ Select Automation</div>
+                    <div class="features-grid">
+                       
+                        <div class="feature-card">
+                            <div class="feature-header">
+                                <div class="feature-title">
+                                    <span class="feature-icon"></span>
+                                    Auto Ban
+                                </div>
+                                <label class="toggle-container">
+                                    <input type="checkbox" class="toggle-input" id="autoBan">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="feature-description">Automatically ban champion with ally protection</div>
+                            <input type="text" class="input-field" id="autoBanChamp" placeholder="Enter champion name (e.g., Yasuo)">
+                            <div class="champion-current">
+                                <span class="champion-label">Current:</span>
+                                <span id="autoBanCurrent">None</span>
+                            </div>
+                            <label class="checkbox-label mt-8">
+                                <input type="checkbox" id="protectBan" checked>
+                                <span>Protect ally picks</span>
+                            </label>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-header">
+                                <div class="feature-title">
+                                    <span class="feature-icon"></span>
+                                    Auto Pick
+                                </div>
+                                <label class="toggle-container">
+                                    <input type="checkbox" class="toggle-input" id="instalock">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="feature-description">Instantly lock your favorite champion</div>
+                            <input type="text" class="input-field" id="instalockChamp" placeholder="Champion name or 'Random'">
+                            <div class="champion-current">
+                                <span class="champion-label">Current:</span>
+                                <span id="instalockCurrent">None</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Queue Automation -->
+                    <div class="section-title">Queue Automation</div>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-header">
+                                <div class="feature-title">
+                                    <span class="feature-icon"></span>
+                                    Auto Accept
+                                </div>
+                                <label class="toggle-container">
+                                    <input type="checkbox" class="toggle-input" id="autoAccept">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="feature-description">Automatically accept queue matches</div>
+                            <div class="feature-hint">
+                                <svg class="hint-icon" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                                </svg>
+                                Never miss a queue again
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Profile Management -->
+                    <div class="section-title">Profile Management</div>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Icon Changer
+                            </div>
+                            <div class="feature-description">Change your profile icon by ID</div>
+                            <input type="number" class="input-field" id="iconId" placeholder="Enter icon ID (1-5000)">
+                            <button class="btn" onclick="changeIcon()">Apply Icon</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Background Changer
+                            </div>
+                            <div class="feature-description">Change your lobby background skin</div>
+                            <input type="number" class="input-field" id="skinId" placeholder="Enter skin ID">
+                            <button class="btn" onclick="changeBackground()">Apply Background</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Riot ID
+                            </div>
+                            <div class="feature-description">Change summoner name and tag</div>
+                            <input type="text" class="input-field" id="newName" placeholder="Name (max 16 chars)" maxlength="16">
+                            <input type="text" class="input-field" id="newTag" placeholder="Tag (max 5 chars)" maxlength="5">
+                            <button class="btn" onclick="changeRiotId()">Update Riot ID</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Status Message
+                            </div>
+                            <div class="feature-description">Set a custom status message</div>
+                            <textarea class="input-field" id="statusMessage" placeholder="Your status message..." rows="2"></textarea>
+                            <button class="btn" onclick="changeStatus()">Set Status</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Profile Badges
+                            </div>
+                            <div class="feature-description">Remove all challenge badges from profile</div>
+                            <button class="btn btn-danger" onclick="removeBadges()">Remove All Badges</button>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="section-title">Quick Actions</div>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Lobby Reveal
+                            </div>
+                            <div class="feature-description">Open Porofessor.gg team stats</div>
+                            <button class="btn" onclick="revealLobby()">Reveal Lobby</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Remove Friends
+                            </div>
+                            <div class="feature-description">Clear your entire friends list</div>
+                            <button class="btn btn-danger" onclick="removeAllFriends()">Remove All Friends</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Restart Client
+                            </div>
+                            <div class="feature-description">Restart League Client UX</div>
+                            <button class="btn" onclick="restartClient()">Restart Client</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings View -->
+                <div id="view-settings" class="view-content">
+                    <!-- About -->
+                    <div class="section-title">About LTK</div>
+                    <div class="features-grid">
+                        <div class="feature-card feature-card-large">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                LTK 
+                            </div>
+                            <div class="feature-description" style="line-height: 1.8;">
+                                <strong>Premium League of Legends automation toolkit</strong><br><br>
+                                <strong>✨ Key Features:</strong><br>
+                                • Auto Accept with instant queue detection<br>
+                                • Protected Auto Ban (won't ban ally picks)<br>
+                                • Auto Pick with random champion option<br>
+                                • Lobby Reveal via Porofessor.gg<br>
+                                • Complete profile customization<br><br>
+                                <strong>Built with:</strong> Electron, Node.js & LCU API<br>
+                                <strong>Safe:</strong> Uses official Riot Client API
+                            </div>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Client Information
+                            </div>
+                            <div class="feature-description">
+                                <div id="clientInfo" style="line-height: 1.8;">
+                                    <strong>Game Version:</strong> <span id="gameVersion">—</span><br>
+                                    <strong>Platform:</strong> <span id="platform">—</span><br>
+                                    <strong>Region:</strong> <span id="clientRegion">—</span><br>
+                                    <strong>Locale:</strong> <span id="locale">—</span>
+                                </div>
+                            </div>
+                            <button class="btn mt-8" onclick="loadClientInfo()">Refresh Info</button>
+                        </div>
+                    </div>
+
+                    <!-- System Tools -->
+                    <div class="section-title">System Tools</div>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Cache Management
+                            </div>
+                            <div class="feature-description">Clear cached summoner data</div>
+                            <button class="btn" onclick="clearCache()">Clear Cache</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Client Logs
+                            </div>
+                            <div class="feature-description">Open League Client logs folder</div>
+                            <button class="btn" onclick="openClientLogs()">Open Logs</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                App Data
+                            </div>
+                            <div class="feature-description">Open application data folder</div>
+                            <button class="btn" onclick="openAppData()">Open Folder</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Force Reconnect
+                            </div>
+                            <div class="feature-description">Force reconnection to LCU</div>
+                            <button class="btn" onclick="forceReconnect()">Force Reconnect</button>
+                        </div>
+                    </div>
+
+
+                    <!-- System Tools -->
+                    <div class="section-title">System Tools</div>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon">🔄</span>
+                                Updates
+                            </div>
+                            <div class="feature-description">
+                                <div id="updateStatus" style="line-height: 1.8;">
+                                    <strong>Current Version:</strong> <span id="currentVersion">—</span><br>
+                                    <strong>Status:</strong> <span id="updateStatusText">—</span><br>
+                                    <strong>Latest Version:</strong> <span id="latestVersion">—</span>
+                                </div>
+                                <div id="updateProgress" style="display: none; margin-top: 12px;">
+                                    <div style="background: var(--bg-tertiary); border-radius: 4px; height: 8px; overflow: hidden;">
+                                        <div id="updateProgressBar" style="background: var(--accent); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                                    </div>
+                                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px; text-align: center;">
+                                        <span id="updateProgressText">0%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn mt-8" id="checkUpdateBtn" onclick="checkForUpdates()">Check for Updates</button>
+                            <button class="btn mt-8" id="installUpdateBtn" onclick="installUpdate()" style="display: none;">Install & Restart</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon">⚙️</span>
+                                Update Settings
+                            </div>
+                            <div class="feature-description">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="autoDownloadUpdates" onchange="toggleAutoDownload()" checked>
+                                    <span>Auto-download updates</span>
+                                </label>
+                                <label class="checkbox-label mt-8">
+                                    <input type="checkbox" id="autoInstallUpdates" onchange="toggleAutoInstall()" checked>
+                                    <span>Auto-install on quit</span>
+                                </label>
+                            </div>
+                            <div class="feature-hint" style="margin-top: 12px;">
+                                <svg class="hint-icon" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                                </svg>
+                                Updates keep your app secure and add new features
+                            </div>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon">🗑️</span>
+                                Cache Management
+                            </div>
+                            <div class="feature-description">Clear cached summoner data</div>
+                            <button class="btn" onclick="clearCache()">Clear Cache</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon">📄</span>
+                                Client Logs
+                            </div>
+                            <div class="feature-description">Open League Client logs folder</div>
+                            <button class="btn" onclick="openClientLogs()">Open Logs</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon">📁</span>
+                                App Data
+                            </div>
+                            <div class="feature-description">Open application data folder</div>
+                            <button class="btn" onclick="openAppData()">Open Folder</button>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon">🔌</span>
+                                Force Reconnect
+                            </div>
+                            <div class="feature-description">Force reconnection to LCU</div>
+                            <button class="btn" onclick="forceReconnect()">Force Reconnect</button>
+                        </div>
+                    </div>
+
+
+                    <!-- Quick Reference -->
+                    <div class="section-title">Quick Reference</div>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Popular Champions
+                            </div>
+                            <div class="feature-description" style="line-height: 1.8; font-size: 11px;">
+                                <strong>Mid:</strong> Yasuo, Yone, Zed, Akali<br>
+                                <strong>Jungle:</strong> Lee Sin, Graves, Kayn<br>
+                                <strong>Support:</strong> Thresh, Pyke, Nautilus<br>
+                                <strong>ADC:</strong> Jinx, Caitlyn, Vayne, Kai'Sa<br>
+                                <strong>Top:</strong> Darius, Garen, Sett<br><br>
+                                <em>Type names exactly as shown in-game</em>
+                            </div>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon"></span>
+                                Tips & Tricks
+                            </div>
+                            <div class="feature-description" style="line-height: 1.8; font-size: 11px;">
+                                • <strong>Auto Pick:</strong> Type 'Random' for random champ<br>
+                                • <strong>Auto Ban:</strong> Enable protect to avoid banning ally picks<br>
+                                • <strong>Icon IDs:</strong> Range from 1 to 5000+<br>
+                                • <strong>Riot ID:</strong> Max 16 chars name, 5 chars tag<br>
+                                • <strong>LCU Status:</strong> Check connection in header
+                            </div>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-title mb-8">
+                                <span class="feature-icon">🔗</span>
+                                Connection Status
+                            </div>
+                            <div class="feature-description" style="line-height: 1.8;">
+                                <strong>Status:</strong> <span id="settingsStatus">—</span><br>
+                                <strong>Port:</strong> <span id="settingsPort">—</span><br>
+                                <strong>Last Check:</strong> <span id="settingsLastCheck">—</span>
+                            </div>
+                            <button class="btn mt-8" onclick="updateConnectionStatus()">Update Status</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <script src="app.js"></script>
+</body>
+</html>
