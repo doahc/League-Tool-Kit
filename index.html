@@ -181,6 +181,37 @@
                         </div>
                     </div>
 
+                    <!-- Privacy -->
+                    <div class="section-title">Privacy</div>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-header">
+                                <div class="feature-title">
+                                    <span class="feature-icon"></span>
+                                    Appear Offline
+                                </div>
+                                <label class="toggle-container">
+                                    <input type="checkbox" class="toggle-input" id="appearOffline">
+                                    <span class="toggle-slider"></span>
+                                </label>
+	                            </div>
+	                            <div class="feature-description">Appear offline to friends while keeping chat and game features</div>
+	                            <div class="champion-current">
+	                                <span class="champion-label">Status:</span>
+	                                <span id="appearOfflineStatus">Online</span>
+	                            </div>
+	                            <button class="btn" id="appearOfflineRestartBtn" onclick="applyAppearOffline()" disabled>
+	                                Restart game to apply
+	                            </button>
+	                            <div class="feature-hint">
+	                                <svg class="hint-icon" viewBox="0 0 20 20" fill="currentColor">
+	                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+	                                </svg>
+	                                First time requires Riot Client restart
+	                            </div>
+	                        </div>
+	                    </div>
+
                     <!-- Profile Management -->
                     <div class="section-title">Profile Management</div>
                     <div class="features-grid">

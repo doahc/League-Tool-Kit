@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld('api', {
     
     // Auto Ban
     setAutoBan: (championName, enabled, protectBan) => ipcRenderer.invoke('set-auto-ban', championName, enabled, protectBan),
+
+    // Appear Offline
+    setAppearOffline: (enabled) => ipcRenderer.invoke('set-appear-offline', enabled),
+    applyAppearOffline: () => ipcRenderer.invoke('apply-appear-offline'),
     
     // Chat
     toggleChat: (disconnect) => ipcRenderer.invoke('toggle-chat', disconnect),

@@ -584,6 +584,17 @@ body {
     box-shadow: 0 8px 24px var(--accent-glow);
 }
 
+.btn:disabled,
+.btn:disabled:hover {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    background: var(--bg-tertiary);
+    border-color: var(--border);
+    color: var(--text-secondary);
+    box-shadow: 0 2px 8px var(--shadow);
+}
+
 .btn:active {
     transform: translateY(0);
 }
@@ -790,4 +801,3 @@ body {
 .mt-16 { margin-top: 18px; }
 .mb-8 { margin-bottom: 10px; }
 .mb-16 { margin-bottom: 18px; }
-

@@ -21,6 +21,8 @@ class AppStateManager {
                 autoAccept: false,
                 autoPick: { enabled: false, champion: '' },
                 autoBan: { enabled: false, champion: '', protect: true },
+                appearOffline: false,
+                appearOfflineActive: false,
                 chatDisconnected: false
             },
             currentView: 'dashboard',
@@ -597,6 +599,7 @@ class UI {
             autoAccept: features.autoAccept,
             instalock: features.autoPick?.enabled,
             autoBan: features.autoBan?.enabled,
+            appearOffline: features.appearOffline,
             disconnectChat: features.chatDisconnected
         };
         
@@ -616,6 +619,53 @@ class UI {
         const protectBan = document.getElementById('protectBan');
         if (protectBan) {
             protectBan.checked = features.autoBan?.protect !== false;
+        }
+
+        this.updateAutoBanMode(features.autoBan?.enabled, features.autoBan?.champion);
+        this.updateAppearOfflineUI(features.appearOffline, features.appearOfflineActive);
+    }
+
+    static updateAppearOfflineUI(desiredEnabled, activeEnabled) {
+        const desired = Boolean(desiredEnabled);
+        const active = Boolean(activeEnabled);
+
+        const statusEl = document.getElementById('appearOfflineStatus');
+        const restartBtn = document.getElementById('appearOfflineRestartBtn');
+
+        const pending = desired !== active;
+
+        if (statusEl) {
+            let text = active ? 'Appearing Offline' : 'Online';
+            if (pending) {
+                text += desired ? ' (restart required)' : ' (pending disable)';
+            }
+            statusEl.textContent = text;
+        }
+
+        if (restartBtn) {
+            restartBtn.disabled = !pending;
+            if (pending) {
+                restartBtn.textContent = desired ? 'Restart game to enable' : 'Restart game to disable';
+            } else {
+                restartBtn.textContent = 'Restart game to apply';
+            }
+        }
+    }
+
+    static updateAutoBanMode(enabled, champion) {
+        const normalized = (champion ?? '').toString().trim();
+        const isNoneBan = normalized.length === 0 || normalized.toLowerCase() === 'none';
+        const hideProtect = Boolean(enabled && isNoneBan);
+
+        const protectInput = document.getElementById('protectBan');
+        const protectContainer = protectInput?.closest('label');
+
+        if (protectContainer) protectContainer.style.display = hideProtect ? 'none' : '';
+        if (protectInput) protectInput.disabled = hideProtect;
+
+        if (enabled && isNoneBan) {
+            const current = document.getElementById('autoBanCurrent');
+            if (current) current.textContent = 'Not banning any champion';
         }
     }
 
@@ -662,6 +712,7 @@ class EventHandler {
             autoAccept: () => FeatureController.toggleAutoAccept(),
             instalock: () => FeatureController.toggleAutoPick(),
             autoBan: () => FeatureController.toggleAutoBan(),
+            appearOffline: () => FeatureController.toggleAppearOffline(),
             disconnectChat: () => FeatureController.toggleChat()
         };
 
@@ -925,22 +976,24 @@ class FeatureController {
         }
 
         const enabled = document.getElementById('autoBan').checked;
-        const champion = document.getElementById('autoBanChamp').value.trim();
+        const championInput = document.getElementById('autoBanChamp').value.trim();
+        const champion = championInput || 'None';
         const protect = document.getElementById('protectBan').checked;
-        
-        if (enabled && !champion) {
-            UI.showNotification('Please enter a champion name', 'error');
-            document.getElementById('autoBan').checked = false;
-            return;
-        }
-        
+
         try {
             const result = await window.api.setAutoBan(champion, enabled, protect);
             
             if (result.success) {
-                appState.setFeature('autoBan', { enabled, champion, protect });
-                UI.updateChampionDisplay('autoBan', enabled ? champion : 'None');
-                UI.showNotification(`Auto Ban ${enabled ? 'enabled for ' + champion : 'disabled'}`, 'success');
+                const resolvedChampion = result.champion ?? champion;
+                appState.setFeature('autoBan', { enabled, champion: resolvedChampion, protect });
+                UI.updateChampionDisplay('autoBan', enabled ? resolvedChampion : 'None');
+                UI.updateAutoBanMode(enabled, resolvedChampion);
+
+                const isNoneBan = resolvedChampion.toString().trim().toLowerCase() === 'none';
+                const message = enabled
+                    ? (isNoneBan ? 'Auto Ban enabled (not banning any champion)' : `Auto Ban enabled for ${resolvedChampion}`)
+                    : 'Auto Ban disabled';
+                UI.showNotification(message, 'success');
             } else {
                 this.handleError('autoBan', enabled, result.error);
             }
@@ -948,6 +1001,88 @@ class FeatureController {
             console.error('[Feature] Toggle Auto Ban error:', error);
             UI.showNotification('Failed to toggle Auto Ban', 'error');
             this.revertToggle('autoBan', enabled);
+        }
+    }
+
+    static async toggleAppearOffline() {
+        if (!Environment.isElectron()) {
+            UI.showNotification('Feature only available in Electron mode', 'error');
+            const toggle = document.getElementById('appearOffline');
+            if (toggle) toggle.checked = false;
+            return;
+        }
+
+        const enabled = document.getElementById('appearOffline').checked;
+
+        try {
+            const result = await window.api.setAppearOffline(enabled);
+
+            if (result.success) {
+                const desired = result.desiredOffline ?? enabled;
+                const active = result.activeOffline ?? appState.getFeature('appearOfflineActive');
+
+                appState.setFeature('appearOffline', desired);
+                appState.setFeature('appearOfflineActive', active);
+                UI.updateFeatureToggles();
+
+                const pending = Boolean(result.pending ?? (desired !== active));
+                UI.showNotification(
+                    pending
+                        ? `Appear Offline ${desired ? 'enabled' : 'disabled'} (restart to apply)`
+                        : `Appear Offline ${desired ? 'enabled' : 'disabled'}`,
+                    'success'
+                );
+            } else {
+                this.handleError('appearOffline', enabled, result.error);
+            }
+        } catch (error) {
+            console.error('[Feature] Toggle Appear Offline error:', error);
+            UI.showNotification('Failed to toggle Appear Offline', 'error');
+            this.revertToggle('appearOffline', enabled);
+        }
+    }
+
+    static async applyAppearOffline() {
+        if (!Environment.isElectron()) {
+            UI.showNotification('Feature only available in Electron mode', 'error');
+            return;
+        }
+
+        const features = appState.get('features');
+        const desired = Boolean(features?.appearOffline);
+        const active = Boolean(features?.appearOfflineActive);
+
+        if (desired === active) {
+            UI.showNotification('No Appear Offline changes to apply', 'info');
+            return;
+        }
+
+        const confirmed = confirm(
+            `Restart the Riot Client to ${desired ? 'enable' : 'disable'} Appear Offline now?`
+        );
+        if (!confirmed) return;
+
+        const restartBtn = document.getElementById('appearOfflineRestartBtn');
+        if (restartBtn) restartBtn.disabled = true;
+
+        try {
+            const result = await window.api.applyAppearOffline();
+            if (result.success) {
+                const nextDesired = result.desiredOffline ?? desired;
+                const nextActive = result.activeOffline ?? nextDesired;
+
+                appState.setFeature('appearOffline', nextDesired);
+                appState.setFeature('appearOfflineActive', nextActive);
+                UI.updateFeatureToggles();
+                UI.showNotification(result.message || 'Riot Client restarting...', 'success');
+            } else {
+                UI.showNotification(`Failed: ${result.error}`, 'error');
+                UI.updateFeatureToggles();
+            }
+        } catch (error) {
+            console.error('[Feature] Apply Appear Offline error:', error);
+            UI.showNotification('Failed to apply Appear Offline', 'error');
+            UI.updateFeatureToggles();
         }
     }
 
@@ -1519,6 +1654,7 @@ window.openAppData = () => SystemController.openAppData();
 window.forceReconnect = () => SystemController.reconnectLCU();
 window.loadClientInfo = () => SystemController.loadClientInfo();
 window.updateConnectionStatus = () => app?.checkLCUStatus();
+window.applyAppearOffline = () => FeatureController.applyAppearOffline();
 
 
 // Update functions
@@ -1550,4 +1686,3 @@ if (Environment.isDevelopment()) {
     
     console.log('[Debug] Utilities available via window.debug');
 }
-

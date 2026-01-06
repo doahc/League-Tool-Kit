@@ -9,6 +9,7 @@ const MatchService = require('./services/MatchService');
 const StatsService = require('./services/StatsService');
 const LogService = require('./services/LogService');
 const UpdateService = require('./services/UpdateService');
+const AppearOfflineService = require('./services/AppearOfflineService');
 
 let mainWindow;
 let services = {};
@@ -114,6 +115,9 @@ function initializeServices() {
     services.feature = new FeatureService(services.lcu);
     services.match = new MatchService(services.lcu);
     services.stats = new StatsService(services.lcu);
+    services.appearOffline = new AppearOfflineService(services.log, {
+        settingsPath: path.join(app.getPath('userData'), 'appear-offline.json'),
+    });
 
     // LCU Event Handlers
     services.lcu.on('onConnect', async (data) => {
@@ -192,6 +196,7 @@ function cleanupServices() {
     services.update?.destroy();
     services.lcu?.destroy();
     services.feature?.destroy();
+    services.appearOffline?.destroy();
     services.summoner?.clearCache();
     services.match?.clearCache();
     
@@ -317,6 +322,31 @@ ipcMain.handle('toggle-chat', async (event, disconnect) => {
     }
 });
 
+// Appear Offline (requires restarting Riot Client)
+ipcMain.handle('set-appear-offline', async (event, enabled) => {
+    if (!services.appearOffline) return { success: false, error: 'Service not initialized' };
+
+    try {
+        services.log.info('System', `Appear Offline set to ${enabled ? 'ON' : 'OFF'}`);
+        return services.appearOffline.setDesiredOffline(Boolean(enabled));
+    } catch (error) {
+        services.log.error('System', 'Appear Offline error', error.message);
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('apply-appear-offline', async () => {
+    if (!services.appearOffline) return { success: false, error: 'Service not initialized' };
+
+    try {
+        services.log.info('System', 'Applying Appear Offline settings (restart required)');
+        return await services.appearOffline.applyDesired();
+    } catch (error) {
+        services.log.error('System', 'Appear Offline apply error', error.message);
+        return { success: false, error: error.message };
+    }
+});
+
 // Profile Actions
 ipcMain.handle('change-icon', async (event, iconId) => {
     if (!services.feature) return { success: false, error: 'Service not initialized' };
@@ -428,7 +458,10 @@ ipcMain.handle('get-feature-states', async () => {
     if (!services.feature) return { success: false, error: 'Service not initialized' };
     
     try {
-        return { success: true, states: services.feature.getFeatureStates() };
+        const states = services.feature.getFeatureStates();
+        states.appearOffline = services.appearOffline?.getDesiredOffline?.() ?? false;
+        states.appearOfflineActive = services.appearOffline?.isAppearingOffline?.() ?? false;
+        return { success: true, states };
     } catch (error) {
         return { success: false, error: error.message };
     }
