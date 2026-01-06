@@ -8,6 +8,8 @@ class FeatureService {
     constructor(lcuService) {
         this.lcu = lcuService;
         this.logThrottle = new LogThrottle(5000);
+
+        this.MAX_AUTO_PICK_CHOICES = 3;
         
         this.state = this.initializeState();
         this.championData = this.initializeChampionData();
@@ -29,9 +31,12 @@ class FeatureService {
                 enabled: false,
                 champion: null,
                 championId: null,
+                champions: [],
+                championIds: [],
                 currentSession: null,
                 hasShownIntent: false,
-                hasLocked: false
+                hasLocked: false,
+                failedChampionIds: new Set()
             },
             autoBan: { 
                 enabled: false,
@@ -73,6 +78,7 @@ class FeatureService {
         this.state.autoPick.currentSession = null;
         this.state.autoPick.hasShownIntent = false;
         this.state.autoPick.hasLocked = false;
+        this.state.autoPick.failedChampionIds = new Set();
         this.state.autoBan.currentSession = null;
         this.state.autoBan.hasBanned = false;
     }
@@ -195,24 +201,82 @@ class FeatureService {
         console.log('[Feature] ✓ Loaded fallback champion list');
     }
 
-    async loadOwnedChampions() {
-        try {
-            const response = await this.lcu.get('/lol-champions/v1/owned-champions-minimal');
-            
-            if (response.status === 200 && response.data) {
-                this.championData.owned = new Set(
-                    response.data
-                        .filter(champ => champ.ownership?.owned)
-                        .map(champ => champ.id)
-                );
-                console.log(`[Feature] ✓ Loaded ${this.championData.owned.size} owned champions`);
-                return true;
+    normalizeChampionId(value) {
+        const numericId = Number(value);
+        if (!Number.isFinite(numericId) || numericId <= 0) return null;
+        return numericId;
+    }
+
+    extractOwnedChampionIds(data, { assumeOwnedIfMissingFlag = false } = {}) {
+        const ownedIds = new Set();
+        if (!Array.isArray(data)) return ownedIds;
+
+        for (const entry of data) {
+            if (typeof entry === 'number' || typeof entry === 'string') {
+                const id = this.normalizeChampionId(entry);
+                if (id) ownedIds.add(id);
+                continue;
             }
-            return false;
-        } catch (error) {
-            console.error('[Feature] Failed to load owned champions:', error.message);
-            return false;
+
+            if (!entry || typeof entry !== 'object') continue;
+
+            const id = this.normalizeChampionId(entry.id ?? entry.championId);
+            if (!id) continue;
+
+            const ownedFlag =
+                entry.ownership?.owned ??
+                entry.owned ??
+                entry.isOwned ??
+                entry.ownership?.isOwned;
+
+            if (ownedFlag === undefined || ownedFlag === null) {
+                if (assumeOwnedIfMissingFlag) {
+                    ownedIds.add(id);
+                }
+                continue;
+            }
+
+            if (Boolean(ownedFlag)) {
+                ownedIds.add(id);
+            }
         }
+
+        return ownedIds;
+    }
+
+    async loadOwnedChampions() {
+        const endpoints = [
+            { path: '/lol-champions/v1/owned-champions-minimal', assumeOwnedIfMissingFlag: true },
+            { path: '/lol-champions/v1/inventories/local/champions', assumeOwnedIfMissingFlag: false },
+            { path: '/lol-champ-select/v1/all-grid-champions', assumeOwnedIfMissingFlag: false }
+        ];
+
+        for (const endpoint of endpoints) {
+            try {
+                const response = await this.lcu.get(endpoint.path);
+
+                if (response.status !== 200 || !response.data) continue;
+
+                const ownedIds = this.extractOwnedChampionIds(response.data, {
+                    assumeOwnedIfMissingFlag: endpoint.assumeOwnedIfMissingFlag
+                });
+
+                if (ownedIds.size > 0) {
+                    this.championData.owned = ownedIds;
+                    console.log(`[Feature] ✓ Loaded ${ownedIds.size} owned champions (${endpoint.path})`);
+                    return true;
+                }
+            } catch (error) {
+                // Try next endpoint
+            }
+        }
+
+        if (!(this.championData.owned instanceof Set)) {
+            this.championData.owned = new Set();
+        }
+
+        console.warn('[Feature] Could not determine owned champions (using empty set)');
+        return false;
     }
 
     getChampionId(championName) {
@@ -238,7 +302,14 @@ class FeatureService {
     }
 
     isChampionOwned(championId) {
-        return this.championData.owned?.has(championId) ?? false;
+        const id = this.normalizeChampionId(championId);
+        if (!id) return false;
+
+        if (!(this.championData.owned instanceof Set) || this.championData.owned.size === 0) {
+            return true;
+        }
+
+        return this.championData.owned.has(id);
     }
 
     // ==================== AUTO ACCEPT ====================
@@ -301,9 +372,12 @@ class FeatureService {
     // ==================== AUTO PICK ====================
 
     async setAutoPick(championName, enabled) {
-        console.log(`[AutoPick] ${enabled ? 'ENABLING' : 'DISABLING'} - Champion: "${championName}"`);
+        const rawName = (championName ?? '').toString();
+        const trimmedName = rawName.trim();
+
+        console.log(`[AutoPick] ${enabled ? 'ENABLING' : 'DISABLING'} - Champion: "${trimmedName}"`);
         
-        if (!enabled || !championName || championName === '99') {
+        if (!enabled || !trimmedName || trimmedName === '99') {
             return this.disableAutoPick();
         }
 
@@ -311,12 +385,16 @@ class FeatureService {
             await this.loadAllChampionData();
         }
 
-        const championId = await this.validateChampionForPick(championName);
-        if (!championId.success) {
-            return championId;
+        const parsed = await this.parseAndValidateAutoPickChampions(trimmedName);
+        if (!parsed.success) {
+            return parsed;
         }
 
-        this.configureAutoPick(championName, championId.id, enabled);
+        if (parsed.championIds?.some(id => id === null || id === undefined)) {
+            await this.loadOwnedChampions();
+        }
+
+        this.configureAutoPick(parsed.champions, parsed.championIds, enabled);
         
         if (enabled) {
             this.startAutoPick();
@@ -325,8 +403,9 @@ class FeatureService {
         return { 
             success: true, 
             enabled, 
-            champion: championName, 
-            championId: championId.id 
+            champion: parsed.displayName,
+            championId: parsed.primaryChampionId,
+            championIds: parsed.championIds
         };
     }
 
@@ -335,49 +414,117 @@ class FeatureService {
             enabled: false,
             champion: null,
             championId: null,
+            champions: [],
+            championIds: [],
             currentSession: null,
             hasShownIntent: false,
-            hasLocked: false
+            hasLocked: false,
+            failedChampionIds: new Set()
         };
         this.stopAutoPick();
         return { success: true, enabled: false };
     }
 
-    async validateChampionForPick(championName) {
-        if (championName.toLowerCase() === 'random') {
-            return { success: true, id: null };
+    parseAutoPickChampionNames(rawChampionName) {
+        const rawName = (rawChampionName ?? '').toString();
+        const trimmedName = rawName.trim();
+
+        if (!trimmedName) return [];
+
+        const parts = trimmedName
+            .split(/[,\n;]+/)
+            .map(name => name.trim())
+            .filter(Boolean);
+
+        const unique = [];
+        const seen = new Set();
+
+        for (const part of parts) {
+            const key = part.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            unique.push(part);
         }
 
-        const championId = this.getChampionId(championName);
-        
-        if (!championId) {
-            return { 
-                success: false, 
-                error: `Champion "${championName}" not found` 
-            };
-        }
-
-        if (!this.isChampionOwned(championId)) {
-            return { 
-                success: false, 
-                error: `You don't own ${championName}` 
-            };
-        }
-
-        return { success: true, id: championId };
+        return unique;
     }
 
-    configureAutoPick(championName, championId, enabled) {
+    async parseAndValidateAutoPickChampions(championName) {
+        const championNames = this.parseAutoPickChampionNames(championName);
+
+        if (championNames.length === 0) {
+            return { success: false, error: 'Please enter a champion name' };
+        }
+
+        if (championNames.length > this.MAX_AUTO_PICK_CHOICES) {
+            return {
+                success: false,
+                error: `Please enter up to ${this.MAX_AUTO_PICK_CHOICES} champions (comma-separated)`
+            };
+        }
+
+        const champions = [];
+        const championIds = [];
+
+        for (const name of championNames) {
+            if (name.toLowerCase() === 'random') {
+                champions.push('Random');
+                championIds.push(null);
+                continue;
+            }
+
+            const championId = this.getChampionId(name);
+
+            if (!championId) {
+                return {
+                    success: false,
+                    error: `Champion "${name}" not found`
+                };
+            }
+
+            if (!this.isChampionOwned(championId)) {
+                this.logThrottle.log(
+                    'AutoPick',
+                    'WARN',
+                    `${this.getChampionName(championId)} not marked as owned`,
+                    'Will attempt anyway'
+                );
+            }
+
+            champions.push(this.getChampionName(championId));
+            championIds.push(championId);
+        }
+
+        const primaryChampionId = championIds.find(id => id !== null && id !== undefined) ?? null;
+        const displayName = champions.join(', ');
+
+        return {
+            success: true,
+            champions,
+            championIds,
+            primaryChampionId,
+            displayName
+        };
+    }
+
+    configureAutoPick(champions, championIds, enabled) {
+        const primaryChampionId = Array.isArray(championIds)
+            ? (championIds.find(id => id !== null && id !== undefined) ?? null)
+            : null;
+
         this.state.autoPick = {
             enabled,
-            champion: championName,
-            championId,
+            champion: Array.isArray(champions) ? champions.join(', ') : null,
+            championId: primaryChampionId,
+            champions: Array.isArray(champions) ? champions : [],
+            championIds: Array.isArray(championIds) ? championIds : [],
             currentSession: null,
             hasShownIntent: false,
-            hasLocked: false
+            hasLocked: false,
+            failedChampionIds: new Set()
         };
         
-        console.log(`[AutoPick] ✓ Configured: ${championName} (ID: ${championId || 'RANDOM'})`);
+        console.log(`[AutoPick] ✓ Configured: ${this.state.autoPick.champion} (IDs: ${this.state.autoPick.championIds.map(id => id ?? 'RANDOM').join(', ')})`);
     }
 
     startAutoPick() {
@@ -428,6 +575,9 @@ class FeatureService {
             this.state[stateKey].hasShownIntent = false;
             this.state[stateKey].hasLocked = false;
             this.state[stateKey].hasBanned = false;
+            if (stateKey === 'autoPick') {
+                this.state.autoPick.failedChampionIds = new Set();
+            }
             console.log(`[${stateKey === 'autoPick' ? 'AutoPick' : 'AutoBan'}] 🆕 NEW SESSION`);
         }
     }
@@ -454,7 +604,7 @@ class FeatureService {
             
             for (const action of actionGroup) {
                 if (this.isMyActiveAction(action, myCell, actionType)) {
-                    await this.executeChampionAction(action, actionType, stateKey);
+                    await this.executeChampionAction(action, actionType, stateKey, session);
                     return;
                 }
             }
@@ -483,7 +633,7 @@ class FeatureService {
                action.isInProgress;
     }
 
-    async executeChampionAction(action, actionType, stateKey) {
+    async executeChampionAction(action, actionType, stateKey, session) {
         const throttleKey = `${actionType}Attempt`;
         
         if (!this.checkThrottle(throttleKey, 300)) return;
@@ -491,7 +641,7 @@ class FeatureService {
         console.log(`[${actionType === 'pick' ? 'AutoPick' : 'AutoBan'}] 🎯 MY TURN!`);
 
         const championId = actionType === 'pick' 
-            ? await this.selectPickChampion()
+            ? await this.selectPickChampion(session)
             : this.state.autoBan.championId;
 
         if (!championId) {
@@ -513,16 +663,151 @@ class FeatureService {
         return true;
     }
 
-    async selectPickChampion() {
-        let championId = this.state.autoPick.championId;
+    getBannedChampionIds(session) {
+        const bannedIds = new Set();
 
-        if (!championId && this.championData.owned?.size > 0) {
-            const ownedArray = Array.from(this.championData.owned);
-            championId = ownedArray[Math.floor(Math.random() * ownedArray.length)];
-            console.log(`[AutoPick] 🎲 Random: ${this.getChampionName(championId)}`);
+        const add = (id) => {
+            const numericId = Number(id);
+            if (Number.isFinite(numericId) && numericId > 0) {
+                bannedIds.add(numericId);
+            }
+        };
+
+        const bans = session?.bans;
+        if (bans && typeof bans === 'object') {
+            const banLists = [bans.myTeamBans, bans.theirTeamBans, bans.bannedChampions];
+            banLists.forEach(list => {
+                if (Array.isArray(list)) list.forEach(add);
+            });
         }
 
-        return championId;
+        if (Array.isArray(session?.actions)) {
+            for (const actionGroup of session.actions) {
+                if (!Array.isArray(actionGroup)) continue;
+
+                for (const action of actionGroup) {
+                    if (action?.type !== 'ban') continue;
+                    if (!action?.completed) continue;
+                    add(action.championId);
+                }
+            }
+        }
+
+        return bannedIds;
+    }
+
+    getPickedChampionIds(session, myCellId) {
+        const pickedIds = new Set();
+
+        const add = (id) => {
+            const numericId = Number(id);
+            if (Number.isFinite(numericId) && numericId > 0) {
+                pickedIds.add(numericId);
+            }
+        };
+
+        if (Array.isArray(session?.actions)) {
+            for (const actionGroup of session.actions) {
+                if (!Array.isArray(actionGroup)) continue;
+
+                for (const action of actionGroup) {
+                    if (action?.type !== 'pick') continue;
+                    if (action?.actorCellId === myCellId) continue;
+                    add(action.championId);
+                }
+            }
+        }
+
+        const teams = [session?.myTeam, session?.theirTeam];
+        teams.forEach(team => {
+            if (!Array.isArray(team)) return;
+
+            team.forEach(player => {
+                if (player?.cellId === myCellId) return;
+                add(player?.championId);
+            });
+        });
+
+        return pickedIds;
+    }
+
+    getUnavailablePickChampionIds(session, myCellId) {
+        const bannedChampionIds = this.getBannedChampionIds(session);
+        const pickedChampionIds = this.getPickedChampionIds(session, myCellId);
+        const failedChampionIds = this.state.autoPick.failedChampionIds instanceof Set
+            ? this.state.autoPick.failedChampionIds
+            : new Set();
+
+        const unavailable = new Set([...bannedChampionIds, ...pickedChampionIds, ...failedChampionIds]);
+
+        return {
+            bannedChampionIds,
+            pickedChampionIds,
+            failedChampionIds,
+            unavailable
+        };
+    }
+
+    getRandomOwnedChampionId(excludedIds) {
+        if (!this.championData.owned?.size) return null;
+
+        const excluded = excludedIds instanceof Set ? excludedIds : new Set();
+        const ownedArray = Array.from(this.championData.owned);
+        const eligible = ownedArray.filter(id => !excluded.has(id));
+
+        if (eligible.length === 0) return null;
+
+        return eligible[Math.floor(Math.random() * eligible.length)];
+    }
+
+    async selectPickChampion(session) {
+        const myCellId = session?.localPlayerCellId;
+        const { bannedChampionIds, pickedChampionIds, failedChampionIds, unavailable } =
+            this.getUnavailablePickChampionIds(session, myCellId);
+
+        const championIds = Array.isArray(this.state.autoPick.championIds) && this.state.autoPick.championIds.length > 0
+            ? this.state.autoPick.championIds
+            : [this.state.autoPick.championId];
+
+        const championNames = Array.isArray(this.state.autoPick.champions) && this.state.autoPick.champions.length > 0
+            ? this.state.autoPick.champions
+            : [this.state.autoPick.champion];
+
+        for (let index = 0; index < championIds.length; index++) {
+            const configuredId = championIds[index];
+            const configuredName = championNames[index] || (configuredId ? this.getChampionName(configuredId) : 'Random');
+
+            if (configuredId === null || configuredId === undefined) {
+                const randomId = this.getRandomOwnedChampionId(unavailable);
+                if (!randomId) {
+                    this.logThrottle.log('AutoPick', 'WARN', 'No available champions for random pick');
+                    return null;
+                }
+
+                console.log(`[AutoPick] 🎲 Random: ${this.getChampionName(randomId)}`);
+                return randomId;
+            }
+
+            if (bannedChampionIds.has(configuredId)) {
+                this.logThrottle.log('AutoPick', 'WARN', `${configuredName} is banned`, 'Trying next...');
+                continue;
+            }
+
+            if (pickedChampionIds.has(configuredId)) {
+                this.logThrottle.log('AutoPick', 'WARN', `${configuredName} is already picked`, 'Trying next...');
+                continue;
+            }
+
+            if (failedChampionIds.has(configuredId)) {
+                this.logThrottle.log('AutoPick', 'WARN', `${configuredName} failed previously`, 'Trying next...');
+                continue;
+            }
+
+            return configuredId;
+        }
+
+        this.logThrottle.log('AutoPick', 'WARN', 'All configured champions are unavailable', this.state.autoPick.champion);
+        return null;
     }
 
     async lockChampion(actionId, championId, actionType, stateKey) {
@@ -552,6 +837,9 @@ class FeatureService {
                 const action = actionType === 'pick' ? 'LOCKED' : 'BANNED';
                 console.log(`[${actionType === 'pick' ? 'AutoPick' : 'AutoBan'}] ✅ ${action}: ${this.getChampionName(championId)}`);
             } else if (response.status >= 400) {
+                if (actionType === 'pick' && response.status < 500) {
+                    this.state.autoPick.failedChampionIds?.add?.(championId);
+                }
                 console.warn(
                     `[${actionType === 'pick' ? 'AutoPick' : 'AutoBan'}] ⚠️ LCU responded ${response.status} while ${actionName.toLowerCase()} ${this.getChampionName(championId)}`
                 );
@@ -874,7 +1162,9 @@ class FeatureService {
             autoPick: {
                 enabled: this.state.autoPick.enabled,
                 champion: this.state.autoPick.champion,
-                championId: this.state.autoPick.championId
+                championId: this.state.autoPick.championId,
+                champions: this.state.autoPick.champions,
+                championIds: this.state.autoPick.championIds
             },
             autoBan: {
                 enabled: this.state.autoBan.enabled,

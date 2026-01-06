@@ -761,8 +761,14 @@ class EventHandler {
 
     static handleChampionInput(inputId) {
         if (inputId === 'instalockChamp') {
+            const toggle = document.getElementById('instalock');
+            const champion = document.getElementById('instalockChamp')?.value?.trim();
+            if (toggle && champion && !toggle.checked) toggle.checked = true;
             FeatureController.toggleAutoPick();
         } else if (inputId === 'autoBanChamp') {
+            const toggle = document.getElementById('autoBan');
+            const champion = document.getElementById('autoBanChamp')?.value?.trim();
+            if (toggle && champion && !toggle.checked) toggle.checked = true;
             FeatureController.toggleAutoBan();
         }
     }
@@ -956,9 +962,10 @@ class FeatureController {
             const result = await window.api.setAutoPick(champion, enabled);
             
             if (result.success) {
-                appState.setFeature('autoPick', { enabled, champion });
-                UI.updateChampionDisplay('instalock', enabled ? champion : 'None');
-                UI.showNotification(`Auto Pick ${enabled ? 'enabled for ' + champion : 'disabled'}`, 'success');
+                const resolvedChampion = result.champion ?? champion;
+                appState.setFeature('autoPick', { enabled, champion: resolvedChampion });
+                UI.updateChampionDisplay('instalock', enabled ? resolvedChampion : 'None');
+                UI.showNotification(`Auto Pick ${enabled ? 'enabled for ' + resolvedChampion : 'disabled'}`, 'success');
             } else {
                 this.handleError('instalock', enabled, result.error);
             }

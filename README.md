@@ -108,9 +108,9 @@ Gera: **LTK.AppImage** e **LTK.deb**
 3. O aplicativo aceitará automaticamente quando encontrar partida
 
 #### Auto Pick
-1. Digite o nome do campeão (ex: "Yasuo")
+1. Digite o nome do campeão (ex: "Yasuo") ou até 3 campeões separados por vírgula (ex: "Jinx, Yasuo, Draven")
 2. Clique em **"Set Auto Pick"**
-3. Ou digite "random" para pick aleatório
+3. Ou digite "random" para pick aleatório (você também pode usar "random" como fallback na lista)
 
 #### Auto Ban
 1. Digite o nome do campeão (ex: "Yasuo")
