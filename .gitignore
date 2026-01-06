@@ -7,6 +7,9 @@ dist/
 build/
 out/
 
+# Local-only
+build-win-portable.sh
+
 # Electron
 *.log
 *.pid
