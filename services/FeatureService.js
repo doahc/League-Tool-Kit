@@ -233,6 +233,7 @@ class FeatureService {
     }
 
     getChampionName(championId) {
+        if (championId === -1 || championId === 0) return 'None';
         return this.championData.idToName[championId] || 'Unknown';
     }
 
@@ -529,10 +530,20 @@ class FeatureService {
             const actionName = actionType === 'pick' ? 'Locking' : 'Banning';
             console.log(`[${actionType === 'pick' ? 'AutoPick' : 'AutoBan'}] 🔒 ${actionName} ${this.getChampionName(championId)}...`);
             
-            const response = await this.lcu.patch(
+            let response = await this.lcu.patch(
                 `/lol-champ-select/v1/session/actions/${actionId}`,
                 { championId, completed: true }
             );
+
+            // Some clients represent the "None" ban option differently. Try 0 as a fallback if -1 is rejected.
+            if (actionType === 'ban' && championId === -1 && (response.status === 400 || response.status === 404)) {
+                console.warn('[AutoBan] ⚠️ "None" ban rejected, retrying with championId 0');
+                response = await this.lcu.patch(
+                    `/lol-champ-select/v1/session/actions/${actionId}`,
+                    { championId: 0, completed: true }
+                );
+                championId = 0;
+            }
 
             if (response.status === 200 || response.status === 204) {
                 const successKey = actionType === 'pick' ? 'hasLocked' : 'hasBanned';
@@ -540,6 +551,10 @@ class FeatureService {
                 
                 const action = actionType === 'pick' ? 'LOCKED' : 'BANNED';
                 console.log(`[${actionType === 'pick' ? 'AutoPick' : 'AutoBan'}] ✅ ${action}: ${this.getChampionName(championId)}`);
+            } else if (response.status >= 400) {
+                console.warn(
+                    `[${actionType === 'pick' ? 'AutoPick' : 'AutoBan'}] ⚠️ LCU responded ${response.status} while ${actionName.toLowerCase()} ${this.getChampionName(championId)}`
+                );
             }
         } catch (error) {
             console.error(`[${actionType === 'pick' ? 'AutoPick' : 'AutoBan'}] ❌ Error:`, error.message);
@@ -553,37 +568,62 @@ class FeatureService {
     // ==================== AUTO BAN ====================
 
     async setAutoBan(championName, enabled, protectBan = true) {
-        console.log(`[AutoBan] ${enabled ? 'ENABLING' : 'DISABLING'} - Champion: "${championName}"`);
-        
-        if (!enabled || !championName || championName === '99') {
+        const rawName = (championName ?? '').toString();
+        const trimmedName = rawName.trim();
+        const normalizedName = trimmedName.toLowerCase();
+
+        console.log(`[AutoBan] ${enabled ? 'ENABLING' : 'DISABLING'} - Champion: "${trimmedName}"`);
+
+        if (!enabled || trimmedName === '99') {
             return this.disableAutoBan();
+        }
+
+        // Support skipping bans by selecting the "None" option.
+        // In LCU champion grids, "None" is typically represented as championId -1.
+        if (trimmedName.length === 0 || normalizedName === 'none') {
+            const championId = -1;
+            const displayName = 'None';
+
+            this.configureAutoBan(displayName, championId, enabled, protectBan);
+
+            if (enabled) {
+                this.startAutoBan();
+            }
+
+            return {
+                success: true,
+                enabled,
+                champion: displayName,
+                championId,
+                protectBan
+            };
         }
 
         if (!this.championData.list) {
             await this.loadAllChampionData();
         }
 
-        const championId = this.getChampionId(championName);
-        
+        const championId = this.getChampionId(trimmedName);
+
         if (!championId) {
-            return { 
-                success: false, 
-                error: `Champion "${championName}" not found` 
+            return {
+                success: false,
+                error: `Champion "${trimmedName}" not found`
             };
         }
 
-        this.configureAutoBan(championName, championId, enabled, protectBan);
-        
+        this.configureAutoBan(trimmedName, championId, enabled, protectBan);
+
         if (enabled) {
             this.startAutoBan();
         }
 
-        return { 
-            success: true, 
-            enabled, 
-            champion: championName, 
-            championId, 
-            protectBan 
+        return {
+            success: true,
+            enabled,
+            champion: trimmedName,
+            championId,
+            protectBan
         };
     }
 
